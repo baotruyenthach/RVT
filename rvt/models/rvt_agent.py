@@ -649,6 +649,7 @@ class RVTAgent:
                     ).to(rot_x_y.device)
                     rot_x_y %= self._num_rotation_classes
 
+            ##### Bao: START here. Only this part is relevant to self._optimizer #####
             out = self._network(
                 pc=pc,
                 img_feat=img_feat,
@@ -723,6 +724,7 @@ class RVTAgent:
             self.scaler.step(self._optimizer)
             self.scaler.update()
             self._lr_sched.step()
+            ##### Bao: END here. Only this part is relevant to self._optimizer #####
 
             loss_log = {
                 "total_loss": total_loss.item(),
