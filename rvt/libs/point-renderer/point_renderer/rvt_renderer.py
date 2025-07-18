@@ -5,6 +5,8 @@ from point_renderer.renderer import PointRenderer
 from mvt.utils import ForkedPdb
 
 import point_renderer.rvt_ops as rvt_ops
+import jax.numpy as jnp
+import jax
 
 
 class RVTBoxRenderer():
@@ -69,6 +71,10 @@ class RVTBoxRenderer():
         # RVT API (that we might want to refactor)
         self.num_img = len(self.cameras)
         self.only_dyn_cam = False
+
+        # Convert camera parameters to JAX format
+        self.inv_poses_jax = jax.device_put(self.cameras.inv_poses.cpu().numpy())
+        self.intrinsics_jax = jax.device_put(self.cameras.intrinsics.cpu().numpy())
 
     def _check_device(self, input, input_name):
         if self.strict_input_device:
@@ -167,6 +173,37 @@ class RVTBoxRenderer():
         pcs_px = torch.permute(pcs_px, (0, 2, 1, 3))
 
         # TODO(Valts): Double-check with Ankit that these projections are truly pixel-aligned
+        return pcs_px
+
+    def get_pt_loc_on_img_jax(self, pt: jnp.ndarray, fix_cam=False, dyn_cam_info=None):
+        """
+        returns the location of a point on the image of the cameras
+        :param pt: torch.Tensor of shape (bs, np, 3)
+        :returns: the location of the pt on the image. this is different from the
+            camera screen coordinate system in pytorch3d. the difference is that
+            pytorch3d camera screen projects the point to [0, 0] to [H, W]; while the
+            index on the img is from [0, 0] to [H-1, W-1]. We verified that
+            the to transform from pytorch3d camera screen point to img we have to
+            subtract (1/H, 1/W) from the pytorch3d camera screen coordinate.
+        :return type: torch.Tensor of shape (bs, np, self.num_img, 2)
+        """
+        assert len(pt.shape) == 3
+        assert pt.shape[-1] == 3
+        assert fix_cam, "Not supported with point renderer"
+        assert dyn_cam_info is None, "Not supported with point renderer"
+
+        bs, np, _ = pt.shape
+
+        # self._check_device(pt, "pt")
+
+        pcs_px = []
+        for i in range(bs):
+            pc_px, pc_cam = ops.project_points_3d_to_pixels_jax(
+                pt[i], self.inv_poses_jax, self.intrinsics_jax, self.cameras.is_orthographic())
+            pcs_px.append(pc_px)
+        pcs_px = jnp.stack(pcs_px, axis=0)
+        pcs_px = jnp.transpose(pcs_px, (0, 2, 1, 3))
+
         return pcs_px
 
     @torch.no_grad()

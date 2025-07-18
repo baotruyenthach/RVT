@@ -12,11 +12,19 @@ import torch.nn.functional as F
 import math
 from transforms3d import euler, quaternions, affines
 import numpy as np
+import jax
+import jax.numpy as jnp
 
 
 def transform_points_batch(pc : torch.Tensor, inv_cam_poses : torch.Tensor):
     pc_h = torch.cat([pc, torch.ones_like(pc[:, 0:1])], dim=1)
     pc_cam_h = torch.einsum("bxy,ny->bnx", inv_cam_poses, pc_h)
+    pc_cam = pc_cam_h[:, :, :3]
+    return pc_cam
+
+def transform_points_batch_jax(pc: jnp.ndarray, inv_cam_poses: jnp.ndarray) -> jnp.ndarray:
+    pc_h = jnp.concatenate([pc, jnp.ones_like(pc[:, 0:1])], axis=1)
+    pc_cam_h = jnp.einsum("bxy,ny->bnx", inv_cam_poses, pc_h)
     pc_cam = pc_cam_h[:, :, :3]
     return pc_cam
 
@@ -31,6 +39,13 @@ def orthographic_camera_projection_batch(pc_cam : torch.Tensor, K : torch.Tensor
     uvZ = torch.einsum("bxy,bny->bnx", K, torch.cat([pc_cam[:, :, :2], torch.ones_like(pc_cam[:, :, 2:3])], dim=2))
     return uvZ[:, :, :2]
 
+def orthographic_camera_projection_batch_jax(pc_cam: jnp.ndarray, K: jnp.ndarray) -> jnp.ndarray:
+    # For orthographic camera projection, treat all points as if they are at depth 1
+    ones = jnp.ones_like(pc_cam[:, :, 2:3])
+    homog_coords = jnp.concatenate([pc_cam[:, :, :2], ones], axis=2)
+    uvZ = jnp.einsum("bxy,bny->bnx", K, homog_coords)
+    return uvZ[:, :, :2]
+
 def orthographic_camera_projection(pc_cam : torch.Tensor, K : torch.Tensor):
     # For orthographic camera projection, treat all points as if they are at depth 1
     uvZ = torch.einsum("xy,ny->nx", K, torch.cat([pc_cam[:, :2], torch.ones_like(pc_cam[:, 2:3])], dim=1))
@@ -39,6 +54,14 @@ def orthographic_camera_projection(pc_cam : torch.Tensor, K : torch.Tensor):
 def perspective_camera_projection_batch(pc_cam : torch.Tensor, K : torch.Tensor):
     uvZ = torch.einsum("bxy,bny->bnx", K, pc_cam)
     uv = torch.stack([uvZ[:, :, 0] / uvZ[:, :, 2], uvZ[:, :, 1] / uvZ[:, :, 2]], dim=2)
+    return uv
+
+def perspective_camera_projection_batch_jax(pc_cam: jnp.ndarray, K: jnp.ndarray) -> jnp.ndarray:
+    uvZ = jnp.einsum("bxy,bny->bnx", K, pc_cam)
+    uv = jnp.stack([
+        uvZ[:, :, 0] / uvZ[:, :, 2],
+        uvZ[:, :, 1] / uvZ[:, :, 2]
+    ], axis=2)
     return uv
 
 def perspective_camera_projection(pc_cam : torch.Tensor, K : torch.Tensor):
@@ -60,6 +83,20 @@ def project_points_3d_to_pixels(pc : torch.Tensor, inv_cam_poses : torch.Tensor,
         pc_px = perspective_camera_projection_batch(pc_cam, intrinsics)
     return pc_px, pc_cam
 
+def project_points_3d_to_pixels_jax(pc : jnp.ndarray, inv_cam_poses : jnp.ndarray, 
+                                    intrinsics : jnp.ndarray, orthographic : bool):
+    """
+    This combines the projection from 3D coordinates to camera coordinates using extrinsics,
+    followed by projection from camera coordinates to pixel coordinates using the intrinsics.
+    """
+    # Project points from world to camera frame
+    pc_cam = transform_points_batch_jax(pc, inv_cam_poses)
+    # Project points from camera frame to pixel space
+    if orthographic:
+        pc_px = orthographic_camera_projection_batch_jax(pc_cam, intrinsics)
+    else:
+        pc_px = perspective_camera_projection_batch_jax(pc_cam, intrinsics)
+    return pc_px
 
 def get_batch_pixel_index(pc_px : torch.Tensor, img_height : int, img_width : int):
     """
