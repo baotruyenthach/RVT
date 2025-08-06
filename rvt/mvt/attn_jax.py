@@ -41,6 +41,7 @@ class PreNorm(nnx.Module):
         self.norm = nnx.LayerNorm(dim, rngs=rngs)
         self.norm_context = nnx.LayerNorm(context_dim, rngs=rngs) if exists(context_dim) else None
 
+        #[Bao]: check this
         # Cache function argument names to detect if 'context' is allowed
         self.fn_accepts_context = "context" in inspect.signature(fn.__call__).parameters
 
@@ -120,6 +121,7 @@ class Attention(nnx.Module):
             mask = rearrange(mask, "b ... -> b (...)")
             max_neg_value = -jnp.finfo(sim.dtype).max
             mask = repeat(mask, "b j -> (b h) () j", h=h)
+            # [Bao]: check this
             sim = jnp.where(mask, sim, max_neg_value)
 
         attn = jax.nn.softmax(sim, axis=-1)
@@ -146,7 +148,7 @@ def act_layer(act: str):
     else:
         raise ValueError("%s not recognized." % act)
 
-
+# [Bao]: note this one
 def norm_layer2d(norm: str, channels: int, *, rngs: nnx.Rngs):
     if norm == "batch":
         return nnx.BatchNorm(num_features=channels, rngs=rngs)
@@ -155,20 +157,20 @@ def norm_layer2d(norm: str, channels: int, *, rngs: nnx.Rngs):
     elif norm == "layer":
         return nnx.GroupNorm(num_features=channels, num_groups=1, rngs=rngs)
     elif norm == "group":
-        return nnx.GroupNorm(num_features=channels, num_groups=4, rngs=rngs)
+        return nnx.GroupNorm(num_features=channels, num_groups=4, rngs=rngs) # [Bao]: check this
     else:
         raise ValueError(f"{norm} not recognized.")
 
 
-def norm_layer1d(norm: str, num_channels: int, *, rngs: nnx.Rngs):
+def norm_layer1d(norm: str, channels: int, *, rngs: nnx.Rngs):
     if norm == "batch":
-        return nnx.BatchNorm(num_features=num_channels, rngs=rngs)
+        return nnx.BatchNorm(num_features=channels, rngs=rngs)
     elif norm == "instance":
-        return nnx.GroupNorm(num_features=num_channels, num_groups=num_channels, rngs=rngs)
+        return nnx.GroupNorm(num_features=channels, num_groups=channels, rngs=rngs)
     elif norm == "layer":
-        return nnx.GroupNorm(num_features=num_channels, num_groups=1, rngs=rngs)
+        return nnx.GroupNorm(num_features=channels, num_groups=1, rngs=rngs)
     elif norm == "group":
-        return nnx.GroupNorm(num_features=num_channels, num_groups=4, rngs=rngs)
+        return nnx.GroupNorm(num_features=channels, num_groups=4, rngs=rngs)
     else:
         raise ValueError(f"{norm} not recognized.")
 
@@ -315,6 +317,7 @@ class DenseBlock(nnx.Module):
         *,
         rngs: nnx.Rngs,
     ):
+        # [Bao]: check this init
         self.linear = nnx.Linear(
             in_features,
             out_features,
@@ -359,7 +362,7 @@ class FixedPositionalEncoding(nnx.Module):
         x = x.reshape(-1, 1)  # [B * D, 1]
         angles = self.feat_scale_factor * x * self.div_term  # [B * D, feat_per_dim // 2]
 
-        out = jnp.concatenate([jnp.sin(angles), jnp.cos(angles)], axis=-1)  # [B * D, feat_per_dim]
+        out = jnp.concatenate([jnp.sin(angles), jnp.cos(angles)], axis=1)  # [B * D, feat_per_dim]
         return out.reshape(batch_size, -1)  # [batch_size, input_dim * feat_per_dim]
 
 
