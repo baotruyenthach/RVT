@@ -180,7 +180,7 @@ class MVT(nnx.Module):
             num_pe_token = lang_max_seq_len + spatial_size ** 2 * self.num_img
 
         self.pos_encoding = nnx.Param(
-            jax.random.normal(rngs['params'](), (1, num_pe_token, self.input_dim_before_seq)) * 0.02
+            jax.random.normal(rngs['params'](), (1, num_pe_token, self.input_dim_before_seq))
         )
 
         # ===============================
@@ -247,6 +247,8 @@ class MVT(nnx.Module):
             attn_dim, self.input_dim_before_seq,
             norm=None, activation=None, rngs=rngs,
         )
+
+        # [Bao]: check the cache_fn and remove it 
 
         get_attn_attn = lambda: PreNorm(
             attn_dim,
@@ -358,6 +360,7 @@ class MVT(nnx.Module):
         if self.add_proprio:
             p = self.proprio_preprocess(proprio)
             p = p[:, :, None, None, None]
+            # [Bao]: check this
             p = jnp.broadcast_to(p, (bs, self.im_channels, num_img, num_pat_img, num_pat_img))
             ins = jnp.concatenate([ins, p], axis=1)
 
