@@ -125,6 +125,7 @@ class RVTBoxRendererJAX():
             cameras = PerspectiveCameras.from_lookat(eyes, ats, ups, hfov=70, img_size=img_size)
         return cameras
 
+    # [Bao]: check this
     def get_pt_loc_on_img_jax(self, pt: jnp.ndarray, fix_cam=False, dyn_cam_info=None):
         """
         returns the location of a point on the image of the cameras
